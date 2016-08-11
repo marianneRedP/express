@@ -7,6 +7,8 @@ import {init as initPing} from './ping';
 import {init as initVersion} from './version';
 import { init as initLists } from './lists';
 import { init as initTasks } from './tasks';
+import redis from 'redis';
+const client = redis.createClient();
 
 
 const url = (host, server) => 'http://' + host + ':' + server.address().port;
@@ -34,6 +36,12 @@ export function start(config, resources, cb) {
     },
   }, function(err) {
     if (err) return cb(err);
+
+  //check redis client
+    client.on('error', err => {
+      console.log('error', err);
+    });
+    
 
     // register middleware, order matters
 
@@ -81,8 +89,8 @@ export function start(config, resources, cb) {
 
     initPing(app);
     initVersion(app, resources);
-    initLists(app);
-    initTasks(app);
+    initLists(app, client);
+    initTasks(app, client);
 
     //handler 404
     app.use(function(req, res, next) {

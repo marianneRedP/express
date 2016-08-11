@@ -1,33 +1,75 @@
 // useful for monitoring
 import _ from 'lodash';
+import client from './app.js';
+import async from 'async';
+import redis from 'redis';
 
-const lists = [ { id: 0, label: 'liste1' },
-                { id: 1, label: 'liste2' },
-                { id: 2, label: 'liste3' },
-                { id: 3, label: 'liste4' },
-              ];
+export const init = (app, client) => {
 
-let listId = 3;
+  client.get('listId', (err, response) => {
+    if (response !== null) {
+      console.log('OK');
+    }
+    else {
+      client.set('listId', 0);
+      console.log('DONE');
+    }
+  });
 
-export const init = (app) => {
   app.get('/lists', (req, res) => {
-    res.json(lists);
+    client.smembers('lists', (err, response) => {
+      if (err) return console.log('smembers error', err);
+      async.map(response, (list, callback) => {
+        client.hgetall(list, (err, result) => {
+          if (err) return callback('hgetall error:', err);
+          callback(null, result);
+        })
+      },
+      (err, data) => {
+        res.json(data);
+      });
+    });
   });
+
   app.post('/lists', (req, res) => {
-    listId = listId + 1;
-    console.log('listId = ', listId);
-    const createdList = { id: listId, label: req.body.todo.label };
-    console.log(createdList);
-    console.log(req.headers);
-    res.json({ createdList });
+
+  client.get('listId', (err, id) => {
+    if (err) return console.log('post:', err);
+    client.incr('listId');
+
+    client.hset(`list${ id }`, 'id', id);
+    client.hset(`list${ id }`, 'label', req.body.todo.label);
+    client.sadd('lists', [`list${ id }`]);
+    
+    res.json({id, label: req.body.todo.label });
+    });
   });
+
   app.put('/lists', (req, res) => {
     const target = _.omit(lists, req.body.id);
     const rename = ({ [req.body.id]: { id: req.body.id, label: req.body.todo.label } })
-    res.send({ rename });
+    res.send( rename );
   });
+
   app.delete('/lists/:id', (req, res) => {
-    const listToDelete = _.omit(lists, req.params.id);
-    res.send({ listToDelete });
+    client.smembers('lists', (err, response) => {
+      if (err) return console.log('smembers error', err);
+      async.map(response, (list, callback) => {
+        client.hgetall(list, (err, result) => {
+          if (err) return callback('hgetall error:', err);
+          callback(null, result);
+        })
+      },
+      (err, data) => {
+        if (err) return console.log('delete', err);
+        const del = _.omit(data, req.params.id);
+        client.hdel(`list${ req.params.id }`, 'id');
+        client.hdel(`list${ req.params.id }`, 'label');
+        client.srem('lists', [`list${ req.params.id }`]);
+        res.json(del); 
+      });
+    });
   });
 };
+
+
