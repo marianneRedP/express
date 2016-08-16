@@ -4,12 +4,14 @@ import client from './app.js';
 import async from 'async';
 import redis from 'redis';
 
+
 export const init = (app, client) => {
 
   client.get('listId', (err, response) => {
     if (response !== null) {
       console.log('OK');
     }
+
     else {
       client.set('listId', 0);
       console.log('DONE');
@@ -31,17 +33,33 @@ export const init = (app, client) => {
     });
   });
 
-  app.post('/lists', (req, res) => {
-
-  client.get('listId', (err, id) => {
-    if (err) return console.log('post:', err);
-    client.incr('listId');
-
-    client.hset(`list${ id }`, 'id', id);
-    client.hset(`list${ id }`, 'label', req.body.todo.label);
-    client.sadd('lists', [`list${ id }`]);
-    
-    res.json({id, label: req.body.todo.label });
+  app.post('/lists', (req, res, next) => {
+    client.get('listId', (err, id) => {
+      if (err) next(err);
+      async.series([
+        (callback) => {
+          client.hset(`list${ id }`, 'id', id, (err, reply) => {
+            if (err) return callback(err);
+            callback();
+          });
+        },
+        (callback) => {
+          client.hset(`list${ id }`, 'label', req.body.todo.label, (err, reply) => {
+            if (err) return callback(err);
+            callback();
+          });
+        },
+        (callback) => {
+          client.incr('listId', (err, reply) => {
+            if (err) return callback(err);
+            callback();
+          });
+        },
+      ],
+      (err, data) => {
+        if (err) return callback(err);
+        res.json({ id, label: req.body.todo.label });
+      });
     });
   });
 

@@ -29,18 +29,39 @@ export const init = (app, client) => {
     });
   });
 
- app.post('/tasks', (req, res) => {
-
-  client.get('taskId', (err, id) => {
-    if (err) return console.log('post:', err);
-    client.incr('taskId');
-    
-    client.hset(`task${ id }`, 'id', id);
-    client.hset(`task${ id }`, 'listId', req.body.task.listId);
-    client.hset(`task${ id }`, 'description', req.body.task.description);
-    client.sadd('tasks', [`task${ id }`]);
-    
-    res.json({id, listId: req.body.task.listId, description: req.body.task.description });
+ app.post('/tasks', (req, res, next) => {
+    client.get('taskId', (err, id) => {
+      if (err) next(err);
+      async.series([
+        (callback) => {
+          client.hset(`task${ id }`, 'id', id, (err, reply) => {
+            if (err) return callback(err);
+            callback();
+          });
+        },
+        (callback) => {
+          client.hset(`task${ id }`, 'listId', req.body.task.listId, (err, reply) => {
+            if (err) return callback(err);
+            callback();
+          });
+        },
+        (callback) => {
+          client.hset(`task${ id }`, 'description', req.body.task.description, (err, reply) => {
+            if (err) return callback(err);
+            callback();
+          });
+        },
+        (callback) => {
+          client.incr('taskId', (err, reply) => {
+            if (err) return callback(err);
+            callback();
+          });
+        },
+      ],
+      (err, data) => {
+        if (err) return callback(err);
+        res.json({id, listId: req.body.task.listId, description: req.body.task.description });
+      });
     });
   });
 
